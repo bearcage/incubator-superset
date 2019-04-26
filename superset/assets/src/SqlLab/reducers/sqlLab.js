@@ -141,6 +141,18 @@ export default function sqlLabReducer(state = {}, action) {
     [actions.REMOVE_TABLE]() {
       return removeFromArr(state, 'tables', action.table);
     },
+    [actions.START_VALIDATION_QUERY]() {
+      let newState = Object.assign({}, state);
+      const sqlEditor = { id: action.query.sqlEditorId };
+      newState = alterInArr(newState, 'queryEditors', sqlEditor, {
+        validationResult: {
+          id: action.query.id,
+          errors: [],
+          completed: false,
+        }
+      });
+      return newState;
+    },
     [actions.START_QUERY]() {
       let newState = Object.assign({}, state);
       if (action.query.sqlEditorId) {

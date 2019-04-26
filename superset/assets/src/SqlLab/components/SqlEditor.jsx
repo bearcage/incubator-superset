@@ -30,6 +30,7 @@ import {
 } from 'react-bootstrap';
 import Split from 'react-split';
 import { t } from '@superset-ui/translation';
+import debounce from 'lodash/debounce';
 
 import Button from '../../components/Button';
 import LimitControl from './LimitControl';
@@ -86,6 +87,7 @@ class SqlEditor extends React.PureComponent {
     this.elementStyle = this.elementStyle.bind(this);
     this.onResizeStart = this.onResizeStart.bind(this);
     this.onResizeEnd = this.onResizeEnd.bind(this);
+    this.requestValidation = this.requestValidation.bind(this);
     this.runQuery = this.runQuery.bind(this);
     this.stopQuery = this.stopQuery.bind(this);
     this.onSqlChanged = this.onSqlChanged.bind(this);
@@ -124,6 +126,9 @@ class SqlEditor extends React.PureComponent {
   }
   onSqlChanged(sql) {
     this.setState({ sql });
+    // Request server-side validation of the query text
+    // TODO(bearcage): debounce this call (300ms?)
+    this.requestValidation();
   }
   // One layer of abstraction for easy spying in unit tests
   getSqlEditorHeight() {
@@ -183,6 +188,20 @@ class SqlEditor extends React.PureComponent {
     return {
       [dimension]: `calc(${elementSize}% - ${gutterSize + GUTTER_MARGIN}px)`,
     };
+  }
+  requestValidation() {
+    // TODO(bearcage): detect whether the database supports validation
+    if (this.props.database) {
+      const qe = this.props.queryEditor;
+      const query = {
+        dbId: qe.dbId,
+        sql: this.state.sql,
+        sqlEditorId: qe.id,
+        schema: qe.schema,
+        templateParams: qe.templateParams,
+      };
+      this.props.actions.runValidationQuery(query);
+    }
   }
   runQuery() {
     if (this.props.database) {

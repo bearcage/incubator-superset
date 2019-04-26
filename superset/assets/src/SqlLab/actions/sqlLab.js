@@ -65,6 +65,10 @@ export const CLEAR_QUERY_RESULTS = 'CLEAR_QUERY_RESULTS';
 export const REMOVE_DATA_PREVIEW = 'REMOVE_DATA_PREVIEW';
 export const CHANGE_DATA_PREVIEW_ID = 'CHANGE_DATA_PREVIEW_ID';
 
+export const START_VALIDATION_QUERY = 'START_VALIDATION_QUERY';
+export const VALIDATION_QUERY_RETURNED = 'VALIDATION_QUERY_RETURNED';
+export const VALIDATION_QUERY_FAILED = 'VALIDATION_QUERY_FAILED';
+
 export const CREATE_DATASOURCE_STARTED = 'CREATE_DATASOURCE_STARTED';
 export const CREATE_DATASOURCE_SUCCESS = 'CREATE_DATASOURCE_SUCCESS';
 export const CREATE_DATASOURCE_FAILED = 'CREATE_DATASOURCE_FAILED';
@@ -75,6 +79,38 @@ export const addDangerToast = addDangerToastAction;
 
 export function resetState() {
   return { type: RESET_STATE };
+}
+
+export function startValidationQuery(query) {
+  if (query == null) {
+    const msg = "programmer error: tried to validate a null query object";
+    console.error(msg);
+    throw msg;
+  }
+  Object.assign(query, {
+    id: query.id ? query.id : shortid.generate(),
+    progress: 0,
+    startDttm: now(),
+    state: 'running',
+  });
+  return { type: START_VALIDATION_QUERY, query };
+}
+
+export function validationQueryReturned(query, results) {
+  return dispatch => {
+    // FIXME(bearcage): drop this once we have a ui element
+    dispatch(addSuccessToast(t('validation returned')));
+    return { type: VALIDATION_QUERY_RETURNED, query, results };
+  }
+}
+
+export function validationQueryFailed(query, msg, link) {
+  // TODO(bearcage): Replace this with a "validation is hosed" persistent UI
+  //                 element in the query editor
+  return dispatch => {
+    dispatch(addDangerToast(t('Database failed to validate your query')));
+    return { type: VALIDATION_QUERY_FAILED, query, msg, link };
+  };
 }
 
 export function saveQuery(query) {
@@ -142,7 +178,7 @@ export function fetchQueryResults(query) {
           return dispatch(queryFailed(query, message, error.link));
         }),
       );
-    };
+  };
 }
 
 export function runQuery(query) {
@@ -182,6 +218,49 @@ export function runQuery(query) {
             message = t(COMMON_ERR_MESSAGES.SESSION_TIMED_OUT);
           }
           dispatch(queryFailed(query, message, error.link));
+        }),
+      );
+  };
+}
+
+export function runValidationQuery(query) {
+  return function (dispatch) {
+    if (query == null) {
+      const msg = "programmer error: tried to validate a null query object";
+      console.error(msg);
+      throw msg;
+    }
+
+    dispatch(startValidationQuery(query));
+
+    // FIXME(bearcage): drop this once we have a real ui element
+    dispatch(addInfoToast(t('Starting validation query')));
+
+    const postPayload = {
+      client_id: query.id,
+      database_id: query.dbId,
+      json: true,
+      schema: query.schema,
+      sql: query.sql,
+      sql_editor_id: query.sqlEditorId,
+      templateParams: query.templateParams,
+    };
+
+    return SupersetClient.post({
+      endpoint: `/superset/validate_sql_json/${window.location.search}`,
+      postPayload,
+      stringify: false,
+    })
+      .then(({ json }) => {
+        dispatch(validationQueryReturned(query, json));
+      })
+      .catch(response =>
+        getClientErrorObject(response).then((error) => {
+          let message = error.error || error.statusText || t('Unknown error');
+          if (message.includes('CSRF token')) {
+            message = t(COMMON_ERR_MESSAGES.SESSION_TIMED_OUT);
+          }
+          dispatch(validationQueryFailed(query, message, error.link));
         }),
       );
   };
